@@ -1,3 +1,3 @@
-[https://worldpeacebtn.ghithub.io/HIVEMIND/]
-[https://worldpeacebtn.ghithub.io/HIVEMIND/index0.html]
-[https://worldpeacebtn.ghithub.io/HIVEMIND/indexROOM.html] 
+[https://worldpeacebtn.github.io/HIVEMIND/]
+[https://worldpeacebtn.github.io/HIVEMIND/index0.html]
+[https://worldpeacebtn.github.io/HIVEMIND/indexROOM.html] 
