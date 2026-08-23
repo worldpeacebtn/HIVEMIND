@@ -1,0 +1,1116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Cyber-Hive Tamagotchi Hub & Room Editor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --neon-blue: #00f3ff;
+            --neon-pink: #ff00ea;
+            --neon-green: #39ff14;
+            --neon-yellow: #ffe600;
+            --neon-purple: #9d00ff;
+            --bg-dark: #04040d;
+        }
+
+        * {
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background-color: var(--bg-dark);
+            font-family: 'Courier New', Courier, monospace;
+            color: var(--neon-blue);
+            overflow: hidden;
+        }
+
+        /* High contrast 360 Sphere HUD Monitor Visuals */
+        .sphere-monitor {
+            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+            pointer-events: none;
+            background: radial-gradient(circle at center, transparent 35%, rgba(2, 2, 10, 0.95) 95%);
+            box-shadow: inset 0 0 120px rgba(0, 243, 255, 0.25);
+            z-index: 40;
+            border: 2px solid rgba(0, 243, 255, 0.3);
+        }
+
+        /* CRT Scanlines & Cyber Grid lines */
+        .sphere-monitor::after {
+            content: ""; display: block; position: absolute; inset: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.3) 50%),
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.04), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.04));
+            z-index: 2; background-size: 100% 3px, 4px 100%; pointer-events: none;
+        }
+
+        /* 3D View Container */
+        #viewport-container {
+            width: 100vw; height: 100vh;
+            display: flex; justify-content: center; align-items: center;
+            perspective: 1000px;
+            overflow: hidden;
+            cursor: grab;
+        }
+
+        #viewport-container:active {
+            cursor: grabbing;
+        }
+
+        #hive-grid {
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.2s cubic-bezier(0.1, 0.8, 0.2, 1);
+            transform: rotateX(45deg) rotateZ(0deg) translateY(-80px) scale(1);
+        }
+
+        /* Hexagon Tile Graphics */
+        .hexagon {
+            position: absolute;
+            width: 86px; height: 98px;
+            background: rgba(0, 243, 255, 0.06);
+            clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+            border: 2px solid rgba(0, 243, 255, 0.4);
+            display: flex; justify-content: center; align-items: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            transform-style: preserve-3d;
+        }
+
+        .hexagon::before {
+            content: ''; position: absolute; inset: 3px;
+            background: rgba(5, 5, 20, 0.9);
+            clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+            z-index: 1;
+        }
+
+        .hexagon:hover, .hexagon.selected {
+            background-color: var(--neon-pink);
+            box-shadow: 0 0 20px var(--neon-pink);
+            z-index: 20;
+        }
+
+        .hexagon.occupied {
+            background-color: rgba(57, 255, 20, 0.25);
+        }
+
+        .hexagon.has-furniture {
+            border-color: var(--neon-yellow);
+        }
+
+        /* Glowing Hitbox Outline */
+        .hitbox-indicator {
+            position: absolute; inset: 6px;
+            border: 2px dashed var(--neon-yellow);
+            clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+            pointer-events: none; z-index: 2;
+            animation: pulse-hitbox 1.5s infinite alternate;
+        }
+
+        @keyframes pulse-hitbox {
+            0% { opacity: 0.3; transform: scale(0.92); }
+            100% { opacity: 0.9; transform: scale(1.02); }
+        }
+
+        /* Entities & Sprites */
+        .sprite-layer {
+            position: absolute; z-index: 10;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            pointer-events: none;
+            transition: transform 0.3s ease;
+        }
+
+        .character-sprite {
+            font-size: 2.8rem;
+            filter: drop-shadow(0 0 12px var(--neon-blue));
+            animation: bounce-float 2.2s infinite ease-in-out;
+        }
+
+        .main-character-sprite {
+            font-size: 3.2rem;
+            animation: rainbow-glow 3s infinite linear, bounce-float 1.8s infinite ease-in-out;
+        }
+
+        .furniture-sprite {
+            font-size: 2.2rem;
+            filter: drop-shadow(0 0 8px var(--neon-yellow));
+            z-index: 5;
+        }
+
+        /* Floating AI Pet Sprite */
+        .ai-pet-badge {
+            position: absolute; top: -18px; right: -12px;
+            font-size: 1.2rem;
+            animation: pet-orbit 2s infinite alternate ease-in-out;
+            filter: drop-shadow(0 0 6px var(--neon-pink));
+        }
+
+        @keyframes bounce-float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-12px); }
+        }
+
+        @keyframes pet-orbit {
+            0% { transform: translateY(0) rotate(-10deg); }
+            100% { transform: translateY(-8px) rotate(10deg); }
+        }
+
+        @keyframes rainbow-glow {
+            0% { filter: drop-shadow(0 0 12px #ff0000); }
+            33% { filter: drop-shadow(0 0 12px #00ff14); }
+            66% { filter: drop-shadow(0 0 12px #00f3ff); }
+            100% { filter: drop-shadow(0 0 12px #ff00ea); }
+        }
+
+        /* Glassmorphism HUD Panels */
+        .hud-card {
+            background: rgba(8, 12, 28, 0.92);
+            border: 1px solid var(--neon-blue);
+            box-shadow: 0 0 20px rgba(0, 243, 255, 0.25);
+            backdrop-filter: blur(10px);
+            z-index: 60;
+        }
+
+        .hud-card-pink {
+            border-color: var(--neon-pink);
+            box-shadow: 0 0 20px rgba(255, 0, 234, 0.25);
+        }
+
+        /* Mobile FABs (Floating Action Buttons) */
+        .fab-btn {
+            width: 48px; height: 48px;
+            border-radius: 9999px;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(10, 15, 35, 0.9);
+            border: 2px solid var(--neon-blue);
+            color: var(--neon-blue);
+            box-shadow: 0 0 12px rgba(0, 243, 255, 0.4);
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .fab-btn:active, .fab-btn.active {
+            transform: scale(1.15);
+            background: var(--neon-blue);
+            color: #000;
+            box-shadow: 0 0 20px var(--neon-blue);
+        }
+
+        .fab-btn-pink {
+            border-color: var(--neon-pink); color: var(--neon-pink);
+            box-shadow: 0 0 12px rgba(255, 0, 234, 0.4);
+        }
+
+        .fab-btn-pink:active, .fab-btn-pink.active {
+            background: var(--neon-pink); color: #000;
+            box-shadow: 0 0 20px var(--neon-pink);
+        }
+
+        .fab-btn-green {
+            border-color: var(--neon-green); color: var(--neon-green);
+            box-shadow: 0 0 12px rgba(57, 255, 20, 0.4);
+        }
+
+        .fab-btn-green:active, .fab-btn-green.active {
+            background: var(--neon-green); color: #000;
+            box-shadow: 0 0 20px var(--neon-green);
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.5); }
+        ::-webkit-scrollbar-thumb { background: var(--neon-blue); border-radius: 2px; }
+    </style>
+</head>
+<body class="text-xs sm:text-sm selection:bg-pink-500 selection:text-black">
+
+    <div class="sphere-monitor"></div>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed top-16 left-1/2 -translate-x-1/2 z-[100] flex flex-col items-center gap-2 pointer-events-none w-11/12 max-w-md"></div>
+
+    <!-- ==================== TOP MONITORING HEADER ==================== -->
+    <header class="fixed top-2 left-2 right-2 z-50 flex items-center justify-between gap-2 pointer-events-none">
+        <div class="hud-card p-2 sm:p-3 rounded-xl pointer-events-auto flex items-center gap-3">
+            <div class="relative">
+                <i class="fa-solid fa-eye text-xl text-cyan-400 animate-pulse"></i>
+                <span class="absolute -top-1 -right-1 w-2.5 h-2.5 bg-green-400 rounded-full animate-ping"></span>
+            </div>
+            <div>
+                <h1 class="font-black text-cyan-300 tracking-wider text-xs sm:text-sm">CYBER-HIVE OVERSEER</h1>
+                <div class="flex gap-3 text-[10px] sm:text-xs text-gray-300 font-mono">
+                    <span>ANXIETY: <strong id="anxiety-val" class="text-green-400">28%</strong></span>
+                    <span>RENT DUE: <strong id="rent-timer" class="text-yellow-300">03:45</strong></span>
+                    <span>POP: <strong id="pop-val" class="text-cyan-300">0/36</strong></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="hud-card p-2 rounded-xl pointer-events-auto flex items-center gap-2">
+            <button id="btn-api-toggle" onclick="openModal('modal-settings')" class="px-2 py-1 rounded bg-black/60 border border-cyan-500/50 text-cyan-400 text-[10px] font-bold hover:bg-cyan-500/20 flex items-center gap-1.5">
+                <i class="fa-solid fa-brain text-pink-400"></i>
+                <span id="api-badge-text">API: OFF</span>
+            </button>
+            <button onclick="togglePanel('top-left-stats')" class="w-8 h-8 rounded-lg bg-black/60 border border-cyan-500/40 text-cyan-400 flex items-center justify-center">
+                <i class="fa-solid fa-chart-line"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Collapsible Overseer Stats Panel -->
+    <div id="top-left-stats" class="hud-card fixed top-16 left-2 z-50 p-3 rounded-xl w-72 max-w-[90vw] hidden transition-all duration-300">
+        <div class="flex justify-between items-center border-b border-cyan-500/30 pb-2 mb-2">
+            <h3 class="font-bold text-cyan-300 text-xs tracking-widest"><i class="fa-solid fa-network-wired mr-1"></i> SECTOR DIAGNOSTICS</h3>
+            <button onclick="togglePanel('top-left-stats')" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="space-y-2 text-xs">
+            <div>
+                <div class="flex justify-between text-[10px] mb-1">
+                    <span>Global Shelter Security</span>
+                    <span id="sec-percent" class="text-cyan-400">82%</span>
+                </div>
+                <div class="w-full bg-black/60 h-2 rounded-full overflow-hidden border border-cyan-500/30">
+                    <div id="sec-bar" class="bg-cyan-400 h-full w-[82%] transition-all duration-500"></div>
+                </div>
+            </div>
+            <div>
+                <div class="flex justify-between text-[10px] mb-1">
+                    <span>Rule Compliance Index</span>
+                    <span id="rule-percent" class="text-pink-400">64%</span>
+                </div>
+                <div class="w-full bg-black/60 h-2 rounded-full overflow-hidden border border-pink-500/30">
+                    <div id="rule-bar" class="bg-pink-500 h-full w-[64%] transition-all duration-500"></div>
+                </div>
+            </div>
+            <div class="bg-black/40 p-2 rounded border border-cyan-500/20 text-[10px] space-y-1 text-gray-300">
+                <p>• Rule #1: Pay weekly credit rent on time.</p>
+                <p>• Rule #2: Keep Tamagotchi pet mood &gt; 50%.</p>
+                <p>• Rule #3: Unlawful eviction occurs at 100% Anxiety.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3D Viewport Container -->
+    <div id="viewport-container">
+        <div id="hive-grid">
+            <!-- Hexagons dynamically generated -->
+        </div>
+    </div>
+
+    <!-- Novel / Dialogue & Interaction Console -->
+    <div id="dialogue-panel" class="hud-card hud-card-pink fixed bottom-20 left-2 right-2 sm:left-1/2 sm:-translate-x-1/2 sm:w-[600px] z-50 p-3 sm:p-4 rounded-2xl flex items-start gap-3 transition-all duration-300">
+        <div class="relative flex-shrink-0">
+            <div id="speaker-icon" class="w-12 h-12 rounded-xl bg-black/80 border border-pink-500/60 flex items-center justify-center text-3xl shadow-lg">
+                🐰
+            </div>
+            <div id="pet-mini-badge" class="absolute -top-2 -right-2 text-sm bg-purple-900 border border-pink-400 rounded-full w-6 h-6 flex items-center justify-center">
+                👾
+            </div>
+        </div>
+        <div class="flex-1 min-w-0">
+            <div class="flex justify-between items-center mb-1">
+                <div class="flex items-center gap-2">
+                    <h4 id="speaker-name" class="font-bold text-pink-400 text-xs sm:text-sm truncate">Red Riding Bunny 🐰🌈</h4>
+                    <span id="speaker-role" class="text-[9px] px-1.5 py-0.5 rounded bg-pink-950 border border-pink-500/40 text-pink-300">Main Resident</span>
+                </div>
+                <button onclick="minimizeDialogue()" class="text-gray-400 hover:text-white px-1">
+                    <i id="dialogue-min-icon" class="fa-solid fa-minus"></i>
+                </button>
+            </div>
+            <p id="dialogue-body" class="text-gray-200 text-xs sm:text-sm italic leading-relaxed h-12 overflow-y-auto pr-1">
+                "My rainbow hood keeps the neon rain away... but I still feel watched by the Guardian. I need to keep my shelter rules intact."
+            </p>
+            <!-- Interactive Action Choices -->
+            <div id="dialogue-choices" class="mt-2 flex flex-wrap gap-1.5">
+                <button onclick="interactAction('encourage')" class="px-2 py-1 rounded-lg bg-pink-500/20 border border-pink-500 text-pink-300 text-[10px] hover:bg-pink-500/40 font-bold">
+                    💬 Encourage (+Rule)
+                </button>
+                <button onclick="interactAction('gift')" class="px-2 py-1 rounded-lg bg-cyan-500/20 border border-cyan-500 text-cyan-300 text-[10px] hover:bg-cyan-500/40 font-bold">
+                    🎁 Gift Cyber Item
+                </button>
+                <button onclick="openPetOvertake()" class="px-2 py-1 rounded-lg bg-purple-500/20 border border-purple-500 text-purple-300 text-[10px] hover:bg-purple-500/40 font-bold">
+                    👾 Overtake AI Pet
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Mobile Docking Action Bar -->
+    <nav class="fixed bottom-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 sm:gap-3 bg-black/80 backdrop-blur-xl border border-cyan-500/40 p-2 rounded-full shadow-[0_0_25px_rgba(0,243,255,0.3)]">
+        <button onclick="setInteractionMode('edit')" id="fab-edit" class="fab-btn active" title="Build & Edit Grid">
+            <i class="fa-solid fa-cubes text-lg"></i>
+        </button>
+        <button onclick="setInteractionMode('sim')" id="fab-sim" class="fab-btn fab-btn-green" title="Run Simulation">
+            <i class="fa-solid fa-play text-lg"></i>
+        </button>
+        <button onclick="openModal('modal-spawner')" class="fab-btn fab-btn-pink" title="Spawn Entities">
+            <i class="fa-solid fa-plus text-lg"></i>
+        </button>
+        <button onclick="openModal('modal-char-editor')" class="fab-btn" title="Resident & Social Calc Hub">
+            <i class="fa-solid fa-users-gear text-lg"></i>
+        </button>
+        <button onclick="openModal('modal-inventory')" class="fab-btn fab-btn-pink" title="Items & Furnishings">
+            <i class="fa-solid fa-box-open text-lg"></i>
+        </button>
+        <button onclick="openModal('modal-camera')" class="fab-btn" title="Camera & View Angles">
+            <i class="fa-solid fa-video text-lg"></i>
+        </button>
+    </nav>
+
+    <!-- MODAL 1: Spawner & Entity Palette -->
+    <div id="modal-spawner" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[80] hidden flex items-center justify-center p-4">
+        <div class="hud-card p-4 rounded-2xl w-full max-w-sm border-cyan-500 space-y-3">
+            <div class="flex justify-between items-center border-b border-cyan-500/30 pb-2">
+                <h3 class="font-bold text-cyan-300 text-sm"><i class="fa-solid fa-ghost mr-1"></i> SELECT RESIDENT TO PLACE</h3>
+                <button onclick="closeModal('modal-spawner')" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark text-base"></i></button>
+            </div>
+            <p class="text-[11px] text-gray-300">Tap a resident or tool, then tap any grid hex to place them.</p>
+            <div class="grid grid-cols-3 gap-2" id="spawn-entity-grid">
+                <!-- Injected via JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 2: Character Editor & Social Calc Hub -->
+    <div id="modal-char-editor" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[80] hidden flex items-center justify-center p-4">
+        <div class="hud-card p-4 rounded-2xl w-full max-w-md border-pink-500 space-y-3 max-h-[85vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b border-pink-500/30 pb-2">
+                <h3 class="font-bold text-pink-300 text-sm"><i class="fa-solid fa-sliders mr-1"></i> RESIDENT & SOCIAL CALC HUB</h3>
+                <button onclick="closeModal('modal-char-editor')" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark text-base"></i></button>
+            </div>
+
+            <!-- Resident Selector -->
+            <div>
+                <label class="text-[10px] text-pink-400 font-bold uppercase block mb-1">Select Target Resident</label>
+                <select id="editor-char-select" onchange="loadCharToEditor()" class="w-full bg-black/80 border border-pink-500/50 rounded-lg p-2 text-xs text-cyan-300 focus:outline-none">
+                    <!-- Options via JS -->
+                </select>
+            </div>
+
+            <!-- Profile Details -->
+            <div class="space-y-2 bg-black/40 p-3 rounded-xl border border-pink-500/20">
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="text-[9px] text-gray-400 block">Heritage Sector</label>
+                        <input id="edit-heritage" type="text" class="w-full bg-black border border-cyan-500/40 rounded p-1 text-xs text-white">
+                    </div>
+                    <div>
+                        <label class="text-[9px] text-gray-400 block">Rent Debt ($)</label>
+                        <input id="edit-debt" type="number" class="w-full bg-black border border-cyan-500/40 rounded p-1 text-xs text-yellow-300">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="text-[9px] text-gray-400 block">Personality Traits (Comma separated)</label>
+                    <input id="edit-traits" type="text" class="w-full bg-black border border-cyan-500/40 rounded p-1 text-xs text-pink-300">
+                </div>
+
+                <div>
+                    <label class="text-[9px] text-gray-400 block">Custom Dialogue Pattern / Slice-of-Life Line</label>
+                    <textarea id="edit-dialogue-line" rows="2" class="w-full bg-black border border-cyan-500/40 rounded p-1 text-xs text-gray-200"></textarea>
+                </div>
+            </div>
+
+            <!-- Connection Matrix ("Social Calc") -->
+            <div>
+                <h4 class="font-bold text-cyan-300 text-xs mb-1"><i class="fa-solid fa-diagram-project mr-1"></i> Resident Connection Link</h4>
+                <div class="grid grid-cols-2 gap-2">
+                    <select id="edit-connect-target" class="bg-black border border-cyan-500/40 rounded p-1 text-xs text-white">
+                        <!-- Resident list -->
+                    </select>
+                    <select id="edit-connect-type" class="bg-black border border-cyan-500/40 rounded p-1 text-xs text-green-300">
+                        <option value="Roommate Allies">Roommate Allies</option>
+                        <option value="Rent Rivals">Rent Rivals</option>
+                        <option value="Secret Crush">Secret Crush</option>
+                        <option value="Debt Collector">Debt Collector</option>
+                    </select>
+                </div>
+            </div>
+
+            <button onclick="saveCharacterEditor()" class="w-full py-2 rounded-xl bg-pink-500 text-black font-black hover:bg-pink-400 transition shadow-[0_0_15px_rgba(255,0,234,0.4)]">
+                SAVE PROFILE &amp; LINKS
+            </button>
+        </div>
+    </div>
+
+    <!-- MODAL 3: Furniture & Inventory Drawer -->
+    <div id="modal-inventory" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[80] hidden flex items-center justify-center p-4">
+        <div class="hud-card p-4 rounded-2xl w-full max-w-sm border-cyan-500 space-y-3">
+            <div class="flex justify-between items-center border-b border-cyan-500/30 pb-2">
+                <h3 class="font-bold text-cyan-300 text-sm"><i class="fa-solid fa-couch mr-1"></i> FURNITURE &amp; ITEM INVENTORY</h3>
+                <button onclick="closeModal('modal-inventory')" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark text-base"></i></button>
+            </div>
+            <p class="text-[11px] text-gray-300">Select furniture hitboxes to place in your room hexes, or gift items to lower anxiety.</p>
+            <div class="grid grid-cols-2 gap-2" id="inventory-grid">
+                <!-- Furniture / Items inserted via JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 4: Camera & Settings (Including Gemini API Key Input) -->
+    <div id="modal-camera" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[80] hidden flex items-center justify-center p-4">
+        <div class="hud-card p-4 rounded-2xl w-full max-w-sm border-cyan-500 space-y-4">
+            <div class="flex justify-between items-center border-b border-cyan-500/30 pb-2">
+                <h3 class="font-bold text-cyan-300 text-sm"><i class="fa-solid fa-sliders mr-1"></i> CAMERA &amp; AI ENGINE</h3>
+                <button onclick="closeModal('modal-camera')" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark text-base"></i></button>
+            </div>
+
+            <!-- View Angles -->
+            <div class="space-y-2">
+                <label class="text-[10px] text-cyan-400 font-bold uppercase block">Camera Angle Presets</label>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="applyCameraPreset('iso')" class="p-2 rounded bg-cyan-500/20 border border-cyan-500 text-cyan-300 text-xs hover:bg-cyan-500/40 font-bold">
+                        📐 Iso 3D View
+                    </button>
+                    <button onclick="applyCameraPreset('top')" class="p-2 rounded bg-cyan-500/20 border border-cyan-500 text-cyan-300 text-xs hover:bg-cyan-500/40 font-bold">
+                        🗺️ Top Hex Editor
+                    </button>
+                    <button onclick="applyCameraPreset('cinematic')" class="p-2 rounded bg-pink-500/20 border border-pink-500 text-pink-300 text-xs hover:bg-pink-500/40 font-bold">
+                        🎬 Cinematic Tilt
+                    </button>
+                    <button onclick="applyCameraPreset('side')" class="p-2 rounded bg-purple-500/20 border border-purple-500 text-purple-300 text-xs hover:bg-purple-500/40 font-bold">
+                        👁️ Sphere Office
+                    </button>
+                </div>
+            </div>
+
+            <!-- Manual Sliders -->
+            <div class="space-y-2 bg-black/40 p-3 rounded-xl border border-cyan-500/20">
+                <div>
+                    <div class="flex justify-between text-[10px] text-gray-300">
+                        <span>Tilt Angle (X)</span><span id="val-tilt">45deg</span>
+                    </div>
+                    <input id="slider-tilt" type="range" min="0" max="75" value="45" oninput="updateManualCamera()" class="w-full accent-cyan-400">
+                </div>
+                <div>
+                    <div class="flex justify-between text-[10px] text-gray-300">
+                        <span>Rotation (Z)</span><span id="val-rot">0deg</span>
+                    </div>
+                    <input id="slider-rot" type="range" min="-180" max="180" value="0" oninput="updateManualCamera()" class="w-full accent-cyan-400">
+                </div>
+                <div>
+                    <div class="flex justify-between text-[10px] text-gray-300">
+                        <span>Zoom Level</span><span id="val-zoom">100%</span>
+                    </div>
+                    <input id="slider-zoom" type="range" min="50" max="180" value="100" oninput="updateManualCamera()" class="w-full accent-cyan-400">
+                </div>
+            </div>
+
+            <!-- Settings: Gemini API Key -->
+            <div id="modal-settings" class="border-t border-cyan-500/30 pt-3">
+                <label class="text-[10px] text-pink-400 font-bold uppercase block mb-1">Gemini AI Key (Optional)</label>
+                <div class="flex gap-2">
+                    <input id="api-key-input" type="password" placeholder="Paste API Key (Leave empty for offline rules)" class="flex-1 bg-black border border-pink-500/50 rounded p-1.5 text-xs text-white">
+                    <button onclick="saveApiKey()" class="px-3 bg-pink-500 text-black font-bold rounded text-xs">Save</button>
+                </div>
+                <p class="text-[9px] text-gray-400 mt-1">When left blank, the game uses local human-crafted patterns and slice-of-life logic.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 5: AI Pet Overtake (Guardian Intervention) -->
+    <div id="modal-pet-overtake" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[85] hidden flex items-center justify-center p-4">
+        <div class="hud-card hud-card-pink p-4 rounded-2xl w-full max-w-sm space-y-3">
+            <div class="flex justify-between items-center border-b border-pink-500/30 pb-2">
+                <h3 class="font-bold text-pink-300 text-sm"><i class="fa-solid fa-robot mr-1"></i> OVERTAKE TAMAGOTCHI PET</h3>
+                <button onclick="closeModal('modal-pet-overtake')" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark text-base"></i></button>
+            </div>
+            <div class="flex items-center gap-3 bg-purple-950/60 p-2.5 rounded-xl border border-purple-500/40">
+                <span id="overtake-pet-icon" class="text-3xl">👾</span>
+                <div>
+                    <h4 id="overtake-pet-name" class="font-bold text-purple-300 text-xs">Bunny's Byte-Rabbit</h4>
+                    <p class="text-[10px] text-gray-300">You are hacking into the resident's pet voice synthesizer.</p>
+                </div>
+            </div>
+            <div>
+                <label class="text-[10px] text-gray-400 block mb-1">Enter Speak Message / Direct Intervention</label>
+                <textarea id="overtake-msg-input" rows="3" placeholder="Type a message to speak directly to the resident..." class="w-full bg-black border border-pink-500/50 rounded-xl p-2 text-xs text-white focus:outline-none"></textarea>
+            </div>
+            <button onclick="submitPetOvertake()" class="w-full py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl text-xs transition shadow-[0_0_15px_rgba(157,0,255,0.5)]">
+                TRANSMIT VOICE OVERRIDE
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Core Game State Variables
+        let currentMode = 'edit'; // 'edit', 'sim'
+        let selectedToolType = 'main'; // 'main', 'fox', 'dragon', etc. or furniture
+        let selectedHexIndex = null;
+        let globalAnxiety = 28;
+        let globalPopulation = 0;
+        let rentTimeSeconds = 225; // 3m 45s timer
+        let geminiApiKey = "";
+
+        // Grid Config
+        const GRID_COLS = 6;
+        const GRID_ROWS = 6;
+        const gridTiles = [];
+
+        // Residents Database (Animals, Mythics, Superheroes)
+        const residentData = {
+            'main': {
+                name: 'Red Riding Bunny',
+                icon: '🐰',
+                class: 'main-character-sprite',
+                pet: '👾',
+                petName: "Byte-Rabbit",
+                heritage: 'Rainbow Core',
+                debt: 120,
+                traits: 'Anxious, Rule-Stickler, Hopeful',
+                dialogue: "My rainbow hood keeps the neon rain away... but I still feel watched.",
+                connection: { target: 'fox', type: 'Roommate Allies' }
+            },
+            'fox': {
+                name: 'Cyber Fox',
+                icon: '🦊',
+                class: 'character-sprite',
+                pet: '🤖',
+                petName: "Nano-Fox",
+                heritage: 'Sector 7 Slums',
+                debt: 450,
+                traits: 'Sly, Hacktivist, Cautious',
+                dialogue: "If I miss rent tomorrow, this floor tile will be dereferenced by the system.",
+                connection: { target: 'main', type: 'Roommate Allies' }
+            },
+            'dragon': {
+                name: 'Neon Dragon',
+                icon: '🐉',
+                class: 'character-sprite',
+                pet: '🔮',
+                petName: "Plasma Orb",
+                heritage: 'Cloud Spire',
+                debt: 0,
+                traits: 'Proud, Collector, Hotheaded',
+                dialogue: "My hoard is just energy cores and glowing furniture. Do not touch!",
+                connection: { target: 'hero', type: 'Rent Rivals' }
+            },
+            'hero': {
+                name: 'Vigilante Byte',
+                icon: '🦸‍♂️',
+                class: 'character-sprite',
+                pet: '🦅',
+                petName: "Drone-Hawk",
+                heritage: 'Central Hub',
+                debt: 50,
+                traits: 'Justice-Obsessed, Stern',
+                dialogue: "The Overseer rules keep order. Break them, and shelter is lost.",
+                connection: { target: 'bat', type: 'Debt Collector' }
+            },
+            'unicorn': {
+                name: 'Mythic Horn',
+                icon: '🦄',
+                class: 'character-sprite',
+                pet: '✨',
+                petName: "Starlight",
+                heritage: 'Prism Realm',
+                debt: 300,
+                traits: 'Dreamy, Artist, Fragile',
+                dialogue: "I painted a digital flower on my hex wall. I hope rent doesn't go up.",
+                connection: { target: 'main', type: 'Secret Crush' }
+            },
+            'bat': {
+                name: 'Vampire Byte',
+                icon: '🦇',
+                class: 'character-sprite',
+                pet: '👁️',
+                petName: "Eye-Spy",
+                heritage: 'Under-Grid',
+                debt: 800,
+                traits: 'Nocturnal, Glitchy, Sarcastic',
+                dialogue: "Night shift in the hive is nice. Less anxiety, more neon glow.",
+                connection: { target: 'hero', type: 'Rent Rivals' }
+            }
+        };
+
+        // Furniture & Items Catalog
+        const furnitureCatalog = {
+            'sofa': { name: 'Neon Sofa', icon: '🛋️', anxietyDelta: -10, ruleDelta: 5 },
+            'terminal': { name: 'Data Terminal', icon: '🖥️', anxietyDelta: 5, ruleDelta: 15 },
+            'plant': { name: 'Bio-Plant', icon: '🪴', anxietyDelta: -15, ruleDelta: 0 },
+            'pizza': { name: 'Cyber Pizza', icon: '🍕', anxietyDelta: -8, ruleDelta: -2 },
+            'core': { name: 'Energy Core', icon: '⚡', anxietyDelta: -5, ruleDelta: 10 }
+        };
+
+        // Initialize Hexagon Grid
+        function generateHiveGrid() {
+            const gridEl = document.getElementById('hive-grid');
+            gridEl.innerHTML = '';
+
+            const hexW = 86;
+            const hexH = 98;
+            const xStep = hexW * 0.76;
+            const yStep = hexH * 0.52;
+
+            const gridW = GRID_COLS * xStep;
+            const gridH = GRID_ROWS * hexH;
+
+            gridEl.style.width = `${gridW}px`;
+            gridEl.style.height = `${gridH}px`;
+            gridEl.style.marginLeft = `-${gridW / 2}px`;
+            gridEl.style.marginTop = `-${gridH / 2}px`;
+
+            for (let r = 0; r < GRID_ROWS; r++) {
+                for (let q = 0; q < GRID_COLS; q++) {
+                    const idx = r * GRID_COLS + q;
+                    const hex = document.createElement('div');
+                    hex.className = 'hexagon';
+
+                    let x = q * xStep;
+                    let y = r * hexH;
+                    if (q % 2 !== 0) {
+                        y += yStep; // offset odd columns
+                    }
+
+                    hex.style.left = `${x}px`;
+                    hex.style.top = `${y}px`;
+
+                    hex.dataset.index = idx;
+                    hex.dataset.q = q;
+                    hex.dataset.r = r;
+
+                    gridTiles[idx] = {
+                        el: hex,
+                        resident: null,
+                        furniture: null
+                    };
+
+                    hex.addEventListener('click', () => handleHexClick(idx));
+                    gridEl.appendChild(hex);
+                }
+            }
+        }
+
+        function handleHexClick(idx) {
+            const tile = gridTiles[idx];
+            selectedHexIndex = idx;
+
+            // Highlight hex
+            document.querySelectorAll('.hexagon').forEach(h => h.classList.remove('selected'));
+            tile.el.classList.add('selected');
+
+            if (currentMode === 'edit') {
+                if (selectedToolType === 'erase') {
+                    clearHexTile(idx);
+                } else if (furnitureCatalog[selectedToolType]) {
+                    // Place Furniture
+                    tile.furniture = selectedToolType;
+                    renderTileContent(idx);
+                    showToast(`Placed ${furnitureCatalog[selectedToolType].name}!`);
+                } else if (residentData[selectedToolType]) {
+                    // Place Resident
+                    tile.resident = selectedToolType;
+                    renderTileContent(idx);
+                    updateStats();
+                    triggerDialogue(selectedToolType);
+                    showToast(`Placed ${residentData[selectedToolType].name}!`);
+                }
+            } else {
+                // Simulation Mode Tap
+                if (tile.resident) {
+                    triggerDialogue(tile.resident);
+                } else if (tile.furniture) {
+                    showToast(`Tile contains ${furnitureCatalog[tile.furniture].name}`);
+                }
+            }
+        }
+
+        function clearHexTile(idx) {
+            const tile = gridTiles[idx];
+            if (tile.resident || tile.furniture) {
+                tile.resident = null;
+                tile.furniture = null;
+                renderTileContent(idx);
+                updateStats();
+                showToast("Cleared Hexagon tile.");
+            }
+        }
+
+        function renderTileContent(idx) {
+            const tile = gridTiles[idx];
+            const hex = tile.el;
+            hex.innerHTML = '';
+            hex.classList.remove('occupied', 'has-furniture');
+
+            if (tile.furniture) {
+                hex.classList.add('has-furniture');
+                const furn = furnitureCatalog[tile.furniture];
+                const furnEl = document.createElement('div');
+                furnEl.className = 'furniture-sprite';
+                furnEl.innerText = furn.icon;
+                hex.appendChild(furnEl);
+
+                // Hitbox indicator overlay
+                const hitbox = document.createElement('div');
+                hitbox.className = 'hitbox-indicator';
+                hex.appendChild(hitbox);
+            }
+
+            if (tile.resident) {
+                hex.classList.add('occupied');
+                const res = residentData[tile.resident];
+
+                const spriteContainer = document.createElement('div');
+                spriteContainer.className = 'sprite-layer';
+
+                const charEl = document.createElement('div');
+                charEl.className = res.class;
+                charEl.innerText = res.icon;
+
+                const petEl = document.createElement('div');
+                petEl.className = 'ai-pet-badge';
+                petEl.innerText = res.pet;
+
+                spriteContainer.appendChild(charEl);
+                spriteContainer.appendChild(petEl);
+
+                // Orient counter rotation based on mode
+                applySpriteRotation(spriteContainer);
+                hex.appendChild(spriteContainer);
+            }
+        }
+
+        function applySpriteRotation(el) {
+            const tilt = document.getElementById('slider-tilt').value;
+            const rot = document.getElementById('slider-rot').value;
+            el.style.transform = `rotateX(-${tilt}deg) rotateZ(-${rot}deg)`;
+        }
+
+        function triggerDialogue(resKey) {
+            const res = residentData[resKey];
+            if (!res) return;
+
+            document.getElementById('speaker-icon').innerText = res.icon;
+            document.getElementById('speaker-name').innerText = res.name;
+            document.getElementById('speaker-role').innerText = `${res.heritage} Resident`;
+            document.getElementById('pet-mini-badge').innerText = res.pet;
+
+            const dialogueBody = document.getElementById('dialogue-body');
+
+            // If Gemini API is configured, request live response
+            if (geminiApiKey) {
+                fetchGeminiResponse(res);
+            } else {
+                // Offline Slice-of-Life Pattern Engine
+                dialogueBody.innerText = `"${res.dialogue}"`;
+            }
+        }
+
+        async function fetchGeminiResponse(res) {
+            const dialogueBody = document.getElementById('dialogue-body');
+            dialogueBody.innerText = "... [AI Pet Transmitting Cyber Thought] ...";
+
+            const prompt = `Act as ${res.name} (${res.icon}), a resident living in a cyber-hive hexagon apartment. Your heritage is ${res.heritage}. Your traits are: ${res.traits}. You owe $${res.debt} in rent and fear losing your shelter. Give a 1-2 sentence dramatic or humorous slice-of-life statement about shelter rules, your roommate connections, or your floating AI pet ${res.petName}.`;
+
+            try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${geminiApiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                });
+                const result = await response.json();
+                const text = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+                dialogueBody.innerText = text ? `"${text.trim()}"` : `"${res.dialogue}"`;
+            } catch (err) {
+                dialogueBody.innerText = `"${res.dialogue}"`;
+            }
+        }
+
+        function openPetOvertake() {
+            let resKey = 'main';
+            if (selectedHexIndex !== null && gridTiles[selectedHexIndex].resident) {
+                resKey = gridTiles[selectedHexIndex].resident;
+            }
+            const res = residentData[resKey];
+
+            document.getElementById('overtake-pet-icon').innerText = res.pet;
+            document.getElementById('overtake-pet-name').innerText = `${res.name}'s ${res.petName}`;
+            openModal('modal-pet-overtake');
+        }
+
+        function submitPetOvertake() {
+            const msg = document.getElementById('overtake-msg-input').value;
+            if (!msg.trim()) return;
+
+            document.getElementById('dialogue-body').innerText = `🤖 [OVERSEER PET OVERRIDE]: "${msg}"`;
+            closeModal('modal-pet-overtake');
+            document.getElementById('overtake-msg-input').value = '';
+            showToast("Transmitted Voice Override to Resident Pet!");
+        }
+
+        function updateStats() {
+            let pop = 0;
+            gridTiles.forEach(t => { if (t.resident) pop++; });
+
+            globalPopulation = pop;
+            document.getElementById('pop-val').innerText = `${pop}/36`;
+
+            // Calculate anxiety based on overcrowding & debt
+            globalAnxiety = Math.min(100, 20 + (pop * 6));
+            const anxietyEl = document.getElementById('anxiety-val');
+            anxietyEl.innerText = `${globalAnxiety}%`;
+
+            if (globalAnxiety > 75) {
+                anxietyEl.className = 'text-red-500 font-bold animate-pulse';
+            } else if (globalAnxiety > 50) {
+                anxietyEl.className = 'text-yellow-400 font-bold';
+            } else {
+                anxietyEl.className = 'text-green-400 font-bold';
+            }
+        }
+
+        // Rent Timer Countdown
+        setInterval(() => {
+            if (rentTimeSeconds > 0) {
+                rentTimeSeconds--;
+                const mins = String(Math.floor(rentTimeSeconds / 60)).padStart(2, '0');
+                const secs = String(rentTimeSeconds % 60).padStart(2, '0');
+                document.getElementById('rent-timer').innerText = `${mins}:${secs}`;
+            } else {
+                rentTimeSeconds = 300; // Reset 5 mins
+                showToast("⚠️ RENT CREDITS DUE! Shelter anxiety spike!");
+            }
+        }, 1000);
+
+        function applyCameraPreset(preset) {
+            const tilt = document.getElementById('slider-tilt');
+            const rot = document.getElementById('slider-rot');
+            const zoom = document.getElementById('slider-zoom');
+
+            if (preset === 'iso') {
+                tilt.value = 45; rot.value = 0; zoom.value = 100;
+            } else if (preset === 'top') {
+                tilt.value = 0; rot.value = 0; zoom.value = 110;
+            } else if (preset === 'cinematic') {
+                tilt.value = 60; rot.value = -35; zoom.value = 130;
+            } else if (preset === 'side') {
+                tilt.value = 75; rot.value = 45; zoom.value = 90;
+            }
+            updateManualCamera();
+            closeModal('modal-camera');
+        }
+
+        function updateManualCamera() {
+            const tilt = document.getElementById('slider-tilt').value;
+            const rot = document.getElementById('slider-rot').value;
+            const zoom = document.getElementById('slider-zoom').value / 100;
+
+            document.getElementById('val-tilt').innerText = `${tilt}deg`;
+            document.getElementById('val-rot').innerText = `${rot}deg`;
+            document.getElementById('val-zoom').innerText = `${Math.round(zoom * 100)}%`;
+
+            const gridEl = document.getElementById('hive-grid');
+            gridEl.style.transform = `rotateX(${tilt}deg) rotateZ(${rot}deg) translateY(-80px) scale(${zoom})`;
+
+            // Re-orient sprites
+            document.querySelectorAll('.sprite-layer').forEach(applySpriteRotation);
+        }
+
+        // Interactive Drag-To-Rotate View
+        let isDragging = false;
+        let startX, startY;
+
+        const vp = document.getElementById('viewport-container');
+        vp.addEventListener('mousedown', (e) => {
+            if (e.target.closest('.hexagon')) return;
+            isDragging = true; startX = e.clientX; startY = e.clientY;
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+
+            const rotInput = document.getElementById('slider-rot');
+            const tiltInput = document.getElementById('slider-tilt');
+
+            rotInput.value = parseInt(rotInput.value) + Math.round(dx * 0.3);
+            tiltInput.value = Math.max(0, Math.min(75, parseInt(tiltInput.value) - Math.round(dy * 0.3)));
+
+            startX = e.clientX; startY = e.clientY;
+            updateManualCamera();
+        });
+
+        window.addEventListener('mouseup', () => isDragging = false);
+
+        function initUIComponents() {
+            // Populate Entity Spawner Grid
+            const spawnerGrid = document.getElementById('spawn-entity-grid');
+            spawnerGrid.innerHTML = '';
+
+            Object.keys(residentData).forEach(key => {
+                const res = residentData[key];
+                const btn = document.createElement('div');
+                btn.className = 'p-2 rounded-xl bg-black/60 border border-pink-500/40 text-center cursor-pointer hover:bg-pink-500/30 transition';
+                btn.innerHTML = `<div class="text-2xl mb-1">${res.icon}</div><div class="text-[10px] text-pink-300 font-bold truncate">${res.name}</div>`;
+                btn.onclick = () => {
+                    selectedToolType = key;
+                    closeModal('modal-spawner');
+                    showToast(`Selected ${res.name} to place.`);
+                };
+                spawnerGrid.appendChild(btn);
+            });
+
+            // Eraser Tool
+            const eraseBtn = document.createElement('div');
+            eraseBtn.className = 'p-2 rounded-xl bg-red-950/60 border border-red-500/40 text-center cursor-pointer hover:bg-red-500/30 transition col-span-3';
+            eraseBtn.innerHTML = `<div class="text-xs text-red-400 font-bold"><i class="fa-solid fa-eraser mr-1"></i> ERASER TOOL</div>`;
+            eraseBtn.onclick = () => {
+                selectedToolType = 'erase';
+                closeModal('modal-spawner');
+                showToast("Eraser tool active.");
+            };
+            spawnerGrid.appendChild(eraseBtn);
+
+            // Populate Inventory Grid
+            const invGrid = document.getElementById('inventory-grid');
+            invGrid.innerHTML = '';
+            Object.keys(furnitureCatalog).forEach(key => {
+                const item = furnitureCatalog[key];
+                const card = document.createElement('div');
+                card.className = 'p-2 rounded-xl bg-black/60 border border-cyan-500/40 text-center cursor-pointer hover:bg-cyan-500/30 transition';
+                card.innerHTML = `<div class="text-2xl mb-1">${item.icon}</div><div class="text-xs text-cyan-300 font-bold">${item.name}</div>`;
+                card.onclick = () => {
+                    selectedToolType = key;
+                    closeModal('modal-inventory');
+                    showToast(`Selected ${item.name} to place.`);
+                };
+                invGrid.appendChild(card);
+            });
+
+            // Populate Character Selectors
+            const charSelect = document.getElementById('editor-char-select');
+            const targetSelect = document.getElementById('edit-connect-target');
+            charSelect.innerHTML = ''; targetSelect.innerHTML = '';
+
+            Object.keys(residentData).forEach(key => {
+                const res = residentData[key];
+                charSelect.innerHTML += `<option value="${key}">${res.icon} ${res.name}</option>`;
+                targetSelect.innerHTML += `<option value="${key}">${res.icon} ${res.name}</option>`;
+            });
+
+            loadCharToEditor();
+        }
+
+        function loadCharToEditor() {
+            const key = document.getElementById('editor-char-select').value;
+            const res = residentData[key];
+
+            document.getElementById('edit-heritage').value = res.heritage;
+            document.getElementById('edit-debt').value = res.debt;
+            document.getElementById('edit-traits').value = res.traits;
+            document.getElementById('edit-dialogue-line').value = res.dialogue;
+            document.getElementById('edit-connect-target').value = res.connection.target;
+            document.getElementById('edit-connect-type').value = res.connection.type;
+        }
+
+        function saveCharacterEditor() {
+            const key = document.getElementById('editor-char-select').value;
+            const res = residentData[key];
+
+            res.heritage = document.getElementById('edit-heritage').value;
+            res.debt = parseInt(document.getElementById('edit-debt').value) || 0;
+            res.traits = document.getElementById('edit-traits').value;
+            res.dialogue = document.getElementById('edit-dialogue-line').value;
+            res.connection.target = document.getElementById('edit-connect-target').value;
+            res.connection.type = document.getElementById('edit-connect-type').value;
+
+            closeModal('modal-char-editor');
+            showToast(`Updated profile for ${res.name}!`);
+        }
+
+        function setInteractionMode(mode) {
+            currentMode = mode;
+            document.getElementById('fab-edit').classList.toggle('active', mode === 'edit');
+            document.getElementById('fab-sim').classList.toggle('active', mode === 'sim');
+
+            if (mode === 'sim') {
+                applyCameraPreset('cinematic');
+                showToast("🎬 Autopilot Simulation Active!");
+            } else {
+                applyCameraPreset('iso');
+                showToast("🛠️ Editor Mode Active!");
+            }
+        }
+
+        function interactAction(type) {
+            if (type === 'encourage') {
+                globalAnxiety = Math.max(0, globalAnxiety - 5);
+                updateStats();
+                showToast("💬 Encouraged resident! Anxiety reduced.");
+            } else if (type === 'gift') {
+                openModal('modal-inventory');
+            }
+        }
+
+        function saveApiKey() {
+            const val = document.getElementById('api-key-input').value.trim();
+            geminiApiKey = val;
+            const badge = document.getElementById('api-badge-text');
+
+            if (val) {
+                badge.innerText = "API: LIVE";
+                badge.className = "text-green-400 font-bold";
+                showToast("Connected to Gemini API!");
+            } else {
+                badge.innerText = "API: OFF";
+                badge.className = "text-cyan-400 font-bold";
+                showToast("Using Offline Slice-of-Life Patterns.");
+            }
+            closeModal('modal-camera');
+        }
+
+        function showToast(msg) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = 'hud-card px-3 py-1.5 rounded-full text-xs font-bold text-cyan-300 border-cyan-400/60 shadow-[0_0_15px_rgba(0,243,255,0.4)] animate-bounce';
+            toast.innerText = msg;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 2500);
+        }
+
+        function openModal(id) {
+            document.getElementById(id).classList.remove('hidden');
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+
+        function togglePanel(id) {
+            document.getElementById(id).classList.toggle('hidden');
+        }
+
+        function minimizeDialogue() {
+            const body = document.getElementById('dialogue-body');
+            const choices = document.getElementById('dialogue-choices');
+            const icon = document.getElementById('dialogue-min-icon');
+
+            if (body.classList.contains('hidden')) {
+                body.classList.remove('hidden');
+                choices.classList.remove('hidden');
+                icon.className = 'fa-solid fa-minus';
+            } else {
+                body.classList.add('hidden');
+                choices.classList.add('hidden');
+                icon.className = 'fa-solid fa-plus';
+            }
+        }
+
+        // Initialize Application
+        window.onload = function () {
+            generateHiveGrid();
+            initUIComponents();
+            updateStats();
+
+            // Default initial character placement
+            gridTiles[14].resident = 'main';
+            renderTileContent(14);
+            triggerDialogue('main');
+        };
+    </script>
+</body>
+</html>
