@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Cyber-Hive & Pixel Room Editor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --neon-blue: #00f3ff;
+            --neon-pink: #ff00ea;
+            --neon-green: #39ff14;
+            --neon-yellow: #ffe600;
+            --neon-purple: #9d00ff;
+            --neon-red: #ff003c;
+            --bg-dark: #04040d;
+        }
+
+        * {
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background-color: var(--bg-dark);
+            font-family: 'Courier New', Courier, monospace;
+            color: var(--neon-blue);
+            overflow: hidden;
+        }
+
+        .sphere-monitor {
+            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+            pointer-events: none;
+            background: radial-gradient(circle at center, transparent 35%, rgba(2, 2, 10, 0.95) 95%);
+            box-shadow: inset 0 0 120px rgba(0, 243, 255, 0.25);
+            z-index: 40;
+            border: 2px solid rgba(0, 243, 255, 0.3);
+        }
+
+        .sphere-monitor::after {
+            content: ""; display: block; position: absolute; inset: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.3) 50%),
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.04), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.04));
+            z-index: 2; background-size: 100% 3px, 4px 100%; pointer-events: none;
+        }
+
+        #viewport-container {
+            width: 100vw; height: 100vh;
+            display: flex; justify-content: center; align-items: center;
+            perspective: 1000px; overflow: hidden; cursor: grab;
+        }
+
+        #viewport-container:active { cursor: grabbing; }
+
+        #hive-grid {
+            position: relative; transform-style: preserve-3d;
+            transition: transform 0.2s cubic-bezier(0.1, 0.8, 0.2, 1);
+            transform: rotateX(45deg) rotateZ(0deg) translateY(-80px) scale(1);
+        }
+
+        .hexagon {
+            position: absolute; width: 86px; height: 98px;
+            background: rgba(0, 243, 255, 0.06);
+            clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+            border: 2px solid rgba(0, 243, 255, 0.4);
+            display: flex; justify-content: center; align-items: center;
+            cursor: pointer; transition: all 0.2s ease;
+            transform-style: preserve-3d;
+        }
+
+        .hexagon::before {
+            content: ''; position: absolute; inset: 3px;
+            background: rgba(5, 5, 20, 0.9);
+            clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+            z-index: 1;
+        }
+
+        .hexagon:hover, .hexagon.selected {
+            background-color: var(--neon-pink);
+            box-shadow: 0 0 20px var(--neon-pink); z-index: 20;
+        }
+        
+        .hexagon.infected {
+            border-color: var(--neon-red);
+            box-shadow: 0 0 20px var(--neon-red);
+            animation: pulse-infect 2s infinite alternate;
+        }
+
+        @keyframes pulse-infect {
+            0% { background-color: rgba(255,0,60,0.1); }
+            100% { background-color: rgba(255,0,60,0.4); }
+        }
+
+        .sprite-layer {
+            position: absolute; z-index: 10; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; pointer-events: none;
+            transition: transform 0.3s ease;
+        }
+
+        .character-sprite { font-size: 2.5rem; filter: drop-shadow(0 0 10px var(--neon-blue)); animation: bounce-float 2.2s infinite ease-in-out; }
+        .main-character-sprite { font-size: 3rem; animation: rainbow-glow 3s infinite linear, bounce-float 1.8s infinite ease-in-out; }
+        
+        /* The Apex Infection Mutation (🙉🙈🙊) */
+        @keyframes apex-cycle {
+            0%, 32% { content: "🙈"; }
+            33%, 65% { content: "🙉"; }
+            66%, 100% { content: "🙊"; }
+        }
+        .apex-sprite::after {
+            content: "🙈"; font-size: 2.8rem;
+            animation: apex-cycle 1.5s infinite steps(1), bounce-float 1s infinite ease-in-out;
+            filter: drop-shadow(0 0 15px var(--neon-red));
+            display: block;
+        }
+        .apex-sprite { text-indent: -9999px; } /* Hide original emoji */
+
+        .ai-pet-badge {
+            position: absolute; top: -18px; right: -12px; font-size: 1.2rem;
+            animation: pet-orbit 2s infinite alternate ease-in-out;
+            filter: drop-shadow(0 0 6px var(--neon-pink));
+        }
+
+        @keyframes bounce-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+        @keyframes pet-orbit { 0% { transform: translateY(0) rotate(-10deg); } 100% { transform: translateY(-8px) rotate(10deg); } }
+        @keyframes rainbow-glow {
+            0% { filter: drop-shadow(0 0 12px #ff0000); } 33% { filter: drop-shadow(0 0 12px #00ff14); }
+            66% { filter: drop-shadow(0 0 12px #00f3ff); } 100% { filter: drop-shadow(0 0 12px #ff00ea); }
+        }
+
+        .hud-card {
+            background: rgba(8, 12, 28, 0.92); border: 1px solid var(--neon-blue);
+            box-shadow: 0 0 20px rgba(0, 243, 255, 0.25); backdrop-filter: blur(10px); z-index: 60;
+        }
+
+        .fab-btn {
+            width: 44px; height: 44px; border-radius: 9999px; display: flex; align-items: center; justify-content: center;
+            background: rgba(10, 15, 35, 0.9); border: 2px solid var(--neon-blue); color: var(--neon-blue);
+            box-shadow: 0 0 12px rgba(0, 243, 255, 0.4); transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .fab-btn:active, .fab-btn.active { transform: scale(1.15); background: var(--neon-blue); color: #000; box-shadow: 0 0 20px var(--neon-blue); }
+        .fab-btn-pink { border-color: var(--neon-pink); color: var(--neon-pink); box-shadow: 0 0 12px rgba(255, 0, 234, 0.4); }
+        .fab-btn-pink:active, .fab-btn-pink.active { background: var(--neon-pink); color: #000; box-shadow: 0 0 20px var(--neon-pink); }
+
+        #room-micro-view {
+            position: fixed; inset: 0; background: var(--bg-dark); z-index: 90;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            transform: scale(0.95); opacity: 0; pointer-events: none;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        #room-micro-view.active {
+            transform: scale(1); opacity: 1; pointer-events: auto;
+        }
+
+        .pixel-grid {
+            display: grid; grid-template-columns: repeat(10, 1fr); grid-template-rows: repeat(10, 1fr);
+            width: 90vmin; height: 90vmin; max-width: 500px; max-height: 500px;
+            background: #0a0a1a; border: 4px solid var(--neon-blue);
+            box-shadow: 0 0 30px rgba(0, 243, 255, 0.3); position: relative;
+        }
+
+        .pixel-cell {
+            border: 1px solid rgba(0, 243, 255, 0.1); display: flex; align-items: center; justify-content: center;
+            font-size: 1.5rem; transition: background 0.1s;
+        }
+        .pixel-cell:hover { border-color: var(--neon-pink); }
+        
+        /* Tile Types */
+        .tile-wall { background: rgba(0, 243, 255, 0.2); box-shadow: inset 0 0 10px var(--neon-blue); }
+        .tile-floor { background: #111; }
+        .tile-neon { background: rgba(255, 0, 234, 0.1); box-shadow: inset 0 0 8px var(--neon-pink); }
+        
+        /* RPG Character inside Room */
+        #rpg-player {
+            position: absolute; width: 10%; height: 10%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 2rem; z-index: 20;
+            transition: all 0.15s linear; filter: drop-shadow(0 0 10px var(--neon-green));
+        }
+
+        /* Virtual D-Pad for Mobile RPG */
+        .d-pad { display: grid; grid-template-columns: repeat(3, 40px); grid-template-rows: repeat(3, 40px); gap: 5px; margin-top: 15px; }
+        .d-btn { background: rgba(0, 243, 255, 0.2); border: 1px solid var(--neon-blue); color: #fff; border-radius: 8px; display: flex; justify-content: center; align-items: center; }
+        .d-btn:active { background: var(--neon-blue); color: #000; }
+        .d-empty { background: transparent; border: none; }
+
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.5); }
+        ::-webkit-scrollbar-thumb { background: var(--neon-blue); border-radius: 2px; }
+    </style>
+</head>
+<body class="text-xs sm:text-sm selection:bg-cyan-500 selection:text-black">
+
+    <div class="sphere-monitor"></div>
+    <div id="toast-container" class="fixed top-16 left-1/2 -translate-x-1/2 z-[100] flex flex-col items-center gap-2 pointer-events-none w-11/12 max-w-md"></div>
+
+    <header class="fixed top-2 left-2 right-2 z-50 flex items-center justify-between gap-2 pointer-events-none">
+        <div class="hud-card p-2 sm:p-3 rounded-xl pointer-events-auto flex items-center gap-3">
+            <div class="relative cursor-pointer" onclick="togglePanel('top-left-stats')">
+                <i class="fa-solid fa-eye text-xl text-cyan-400 animate-pulse"></i>
+                <span id="oracle-ping" class="absolute -top-1 -right-1 w-2.5 h-2.5 bg-green-400 rounded-full animate-ping"></span>
+            </div>
+            <div>
+                <h1 class="font-black text-cyan-300 tracking-wider text-xs sm:text-sm">CYBER-HIVE ORACLE</h1>
+                <div class="flex gap-3 text-[10px] sm:text-xs text-gray-300 font-mono">
+                    <span>ANXIETY: <strong id="anxiety-val" class="text-green-400">28%</strong></span>
+                    <span>APEX: <strong id="apex-val" class="text-red-400">0</strong></span>
+                    <span>RENT: <strong id="rent-timer" class="text-yellow-300">03:45</strong></span>
+                </div>
+            </div>
+        </div>
+        <div class="hud-card p-2 rounded-xl pointer-events-auto flex items-center gap-2">
+            <button onclick="openModal('modal-settings')" class="px-2 py-1 rounded bg-black/60 border border-cyan-500/50 text-cyan-400 text-[10px] font-bold hover:bg-cyan-500/20">
+                <i class="fa-solid fa-robot text-pink-400 mr-1"></i> <span id="api-badge-text">AI: OFF</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Collapsible Diagnostics Panel -->
+    <div id="top-left-stats" class="hud-card fixed top-16 left-2 z-50 p-3 rounded-xl w-72 max-w-[90vw] hidden transition-all duration-300">
+        <div class="flex justify-between items-center border-b border-cyan-500/30 pb-2 mb-2">
+            <h3 class="font-bold text-cyan-300 text-xs tracking-widest"><i class="fa-solid fa-network-wired mr-1"></i> ORACLE DIAGNOSTICS</h3>
+            <button onclick="togglePanel('top-left-stats')" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="space-y-2 text-xs">
+            <div>
+                <div class="flex justify-between text-[10px] mb-1"><span>Shelter Security</span><span id="sec-percent" class="text-cyan-400">82%</span></div>
+                <div class="w-full bg-black/60 h-2 rounded-full overflow-hidden border border-cyan-500/30">
+                    <div id="sec-bar" class="bg-cyan-400 h-full w-[82%]"></div>
+                </div>
+            </div>
+            <div class="bg-black/40 p-2 rounded border border-red-500/20 text-[10px] space-y-1 text-gray-300">
+                <p class="text-red-400 font-bold">WARNING: APEX INFECTION</p>
+                <p>If resident anxiety hits 90% without Guardian care, they mutate into Apex (🙈🙉🙊).</p>
+                <p>Deploy Blue Wolf (🐺) or interact to rehabilitate.</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="viewport-container">
+        <div id="hive-grid"></div>
+    </div>
+
+    <div id="hex-context-menu" class="fixed z-50 hud-card p-2 rounded-xl hidden flex-col gap-2 transform -translate-x-1/2 -translate-y-[120%]">
+        <button onclick="enterMicroRoom()" class="px-3 py-1.5 bg-cyan-500/20 hover:bg-cyan-500/40 text-cyan-300 font-bold text-xs rounded border border-cyan-500 flex items-center gap-2">
+            <i class="fa-solid fa-gamepad"></i> Enter / Edit Pixel Room
+        </button>
+        <button onclick="clearHexTile(selectedHexIndex); closeContextMenu();" class="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/40 text-red-300 font-bold text-xs rounded border border-red-500 flex items-center gap-2">
+            <i class="fa-solid fa-trash"></i> Delete Hive Node
+        </button>
+        <button onclick="closeContextMenu()" class="text-[10px] text-gray-400 text-center mt-1">Cancel</button>
+    </div>
+
+    <div id="dialogue-panel" class="hud-card border-pink-500 fixed bottom-20 left-2 right-2 sm:left-1/2 sm:-translate-x-1/2 sm:w-[500px] z-50 p-3 rounded-2xl flex items-start gap-3 transition-all duration-300">
+        <div class="relative flex-shrink-0">
+            <div id="speaker-icon" class="w-12 h-12 rounded-xl bg-black/80 border border-pink-500/60 flex items-center justify-center text-3xl shadow-lg">🐰</div>
+            <div id="pet-mini-badge" class="absolute -top-2 -right-2 text-sm bg-purple-900 border border-pink-400 rounded-full w-6 h-6 flex items-center justify-center">👾</div>
+        </div>
+        <div class="flex-1 min-w-0">
+            <div class="flex justify-between items-center mb-1">
+                <div class="flex items-center gap-2">
+                    <h4 id="speaker-name" class="font-bold text-pink-400 text-xs truncate">Red Riding Bunny</h4>
+                    <span id="speaker-role" class="text-[9px] px-1 rounded bg-pink-950 border border-pink-500 text-pink-300">Target</span>
+                </div>
+                <button onclick="togglePanel('dialogue-panel')" class="text-gray-400 hover:text-white px-1"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <p id="dialogue-body" class="text-gray-200 text-xs italic leading-relaxed h-12 overflow-y-auto pr-1">"Guardian, the neon rain is glitching again..."</p>
+            <div class="mt-2 flex flex-wrap gap-1.5">
+                <button onclick="interactAction('care')" class="px-2 py-1 rounded bg-pink-500/20 border border-pink-500 text-pink-300 text-[10px] hover:bg-pink-500/40">❤️ Care / Rehab</button>
+                <button onclick="openModal('modal-pet-overtake')" class="px-2 py-1 rounded bg-purple-500/20 border border-purple-500 text-purple-300 text-[10px] hover:bg-purple-500/40">👾 AI Overtake</button>
+            </div>
+        </div>
+    </div>
+
+    <nav class="fixed bottom-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 sm:gap-3 bg-black/80 backdrop-blur-xl border border-cyan-500/40 p-2 rounded-full shadow-[0_0_25px_rgba(0,243,255,0.3)]">
+        <button onclick="openModal('modal-spawner')" class="fab-btn active" title="Hive Editor"><i class="fa-solid fa-cubes text-lg"></i></button>
+        <button onclick="runSimulationStep()" class="fab-btn fab-btn-pink" title="Run Sim Step"><i class="fa-solid fa-forward-step text-lg"></i></button>
+        <button onclick="openModal('modal-char-editor')" class="fab-btn" title="Social Calc Hub"><i class="fa-solid fa-diagram-project text-lg"></i></button>
+        <button onclick="openModal('modal-camera')" class="fab-btn" title="Camera Angles"><i class="fa-solid fa-video text-lg"></i></button>
+    </nav>
+
+    <div id="room-micro-view">
+        <div class="absolute top-4 w-full px-6 flex justify-between items-center z-50">
+            <h2 class="text-cyan-300 font-black tracking-widest text-lg drop-shadow-[0_0_8px_#00f3ff]"><i class="fa-solid fa-door-open mr-2"></i> ROOM TERMINAL <span id="micro-room-id" class="text-pink-400">#00</span></h2>
+            <button onclick="exitMicroRoom()" class="px-4 py-2 bg-red-600/80 hover:bg-red-500 text-white font-bold rounded border border-red-400 shadow-[0_0_15px_rgba(255,0,0,0.5)]">
+                <i class="fa-solid fa-person-walking-arrow-right"></i> EXIT TO HIVE
+            </button>
+        </div>
+
+        <div class="flex flex-col md:flex-row gap-6 items-center mt-12">
+            <!-- The 10x10 Grid -->
+            <div id="pixel-canvas" class="pixel-grid">
+                <!-- Player Avatar injected here during play mode -->
+                <div id="rpg-player" class="hidden">🐰</div>
+                <!-- Cells injected via JS -->
+            </div>
+
+            <!-- Toolbar & Controls -->
+            <div class="hud-card p-4 rounded-xl w-64 flex flex-col gap-4">
+                
+                <!-- Tools -->
+                <div>
+                    <h3 class="text-pink-400 text-xs font-bold mb-2 border-b border-pink-500/30 pb-1">PIXEL EDITOR TOOLS</h3>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="setBrush('floor')" id="brush-floor" class="brush-btn px-2 py-2 bg-gray-900 border border-gray-500 text-white text-[10px] rounded active-brush">Floor</button>
+                        <button onclick="setBrush('wall')" id="brush-wall" class="brush-btn px-2 py-2 bg-cyan-900/40 border border-cyan-500 text-cyan-300 text-[10px] rounded">Wall Block</button>
+                        <button onclick="setBrush('neon')" id="brush-neon" class="brush-btn px-2 py-2 bg-pink-900/40 border border-pink-500 text-pink-300 text-[10px] rounded">Neon Border</button>
+                        <button onclick="setBrush('bed')" id="brush-bed" class="brush-btn px-2 py-2 border border-yellow-500 text-yellow-300 text-xl rounded">🛏️</button>
+                        <button onclick="setBrush('pc')" id="brush-pc" class="brush-btn px-2 py-2 border border-purple-500 text-purple-300 text-xl rounded">🖥️</button>
+                        <button onclick="setBrush('erase')" id="brush-erase" class="brush-btn px-2 py-2 bg-red-900/40 border border-red-500 text-red-300 text-[10px] rounded">Eraser</button>
+                    </div>
+                    <p class="text-[9px] text-gray-400 mt-2">Draw on the grid to design the room and hitboxes.</p>
+                </div>
+
+                <!-- RPG Play Mode -->
+                <div>
+                    <h3 class="text-cyan-400 text-xs font-bold mb-2 border-b border-cyan-500/30 pb-1">TAMAGOTCHI PLAY MODE</h3>
+                    <button onclick="toggleRPGMode()" id="btn-rpg-mode" class="w-full py-2 bg-green-600/30 border border-green-500 text-green-300 font-bold rounded text-xs hover:bg-green-600/50">
+                        ▶ START PLAYING
+                    </button>
+                    
+                    <!-- Mobile D-Pad (Visible when playing) -->
+                    <div id="mobile-dpad" class="d-pad hidden mx-auto">
+                        <div class="d-empty"></div>
+                        <button class="d-btn" onpointerdown="startMove(0, -1)" onpointerup="stopMove()"><i class="fa-solid fa-caret-up"></i></button>
+                        <div class="d-empty"></div>
+                        <button class="d-btn" onpointerdown="startMove(-1, 0)" onpointerup="stopMove()"><i class="fa-solid fa-caret-left"></i></button>
+                        <div class="d-empty"></div>
+                        <button class="d-btn" onpointerdown="startMove(1, 0)" onpointerup="stopMove()"><i class="fa-solid fa-caret-right"></i></button>
+                        <div class="d-empty"></div>
+                        <button class="d-btn" onpointerdown="startMove(0, 1)" onpointerup="stopMove()"><i class="fa-solid fa-caret-down"></i></button>
+                        <div class="d-empty"></div>
+                    </div>
+                    <p id="rpg-hint" class="text-[9px] text-gray-400 mt-2 hidden">Use WASD or D-Pad to move.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Spawner Modal -->
+    <div id="modal-spawner" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[80] hidden flex items-center justify-center p-4">
+        <div class="hud-card p-4 rounded-2xl w-full max-w-sm border-cyan-500 space-y-3">
+            <div class="flex justify-between items-center border-b border-cyan-500/30 pb-2">
+                <h3 class="font-bold text-cyan-300 text-sm"><i class="fa-solid fa-ghost mr-1"></i> ASSIGN RESIDENT TO HIVE</h3>
+                <button onclick="closeModal('modal-spawner')" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="grid grid-cols-3 gap-2" id="spawn-entity-grid">
+                <!-- Injected via JS -->
+            </div>
+            <p class="text-[10px] text-gray-400">Select an entity, then click an empty hexagon to assign their room.</p>
+        </div>
+    </div>
+
+    <!-- Social Calc / Character Editor Modal -->
+    <div id="modal-char-editor" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[80] hidden flex items-center justify-center p-4">
+        <div class="hud-card p-4 rounded-2xl w-full max-w-md border-pink-500 space-y-3 max-h-[85vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b border-pink-500/30 pb-2">
+                <h3 class="font-bold text-pink-300 text-sm"><i class="fa-solid fa-sliders mr-1"></i> SOCIAL CALC & LOGIC</h3>
+                <button onclick="closeModal('modal-char-editor')" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div>
+                <select id="editor-char-select" onchange="loadCharToEditor()" class="w-full bg-black/80 border border-pink-500/50 rounded-lg p-2 text-xs text-cyan-300">
+                    <!-- Populated via JS -->
+                </select>
+            </div>
+            <div class="space-y-2 bg-black/40 p-3 rounded-xl border border-pink-500/20">
+                <div class="grid grid-cols-2 gap-2">
+                    <div><label class="text-[9px] text-gray-400 block">Heritage</label><input id="edit-heritage" type="text" class="w-full bg-black border border-cyan-500/40 rounded p-1 text-xs text-white"></div>
+                    <div><label class="text-[9px] text-gray-400 block">Debt ($)</label><input id="edit-debt" type="number" class="w-full bg-black border border-cyan-500/40 rounded p-1 text-xs text-yellow-300"></div>
+                </div>
+                <div><label class="text-[9px] text-gray-400 block">Traits (Dark Triad, Empath, etc.)</label><input id="edit-traits" type="text" class="w-full bg-black border border-cyan-500/40 rounded p-1 text-xs text-pink-300"></div>
+                <div><label class="text-[9px] text-gray-400 block">Offline Slice-of-Life Dialog</label><textarea id="edit-dialogue-line" rows="2" class="w-full bg-black border border-cyan-500/40 rounded p-1 text-xs text-gray-200"></textarea></div>
+            </div>
+            <button onclick="saveCharacterEditor()" class="w-full py-2 rounded-xl bg-pink-500 text-black font-black hover:bg-pink-400 transition shadow-[0_0_15px_rgba(255,0,234,0.4)]">SAVE LORE</button>
+        </div>
+    </div>
+
+    <!-- AI Overtake Modal -->
+    <div id="modal-pet-overtake" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[85] hidden flex items-center justify-center p-4">
+        <div class="hud-card hud-card-pink p-4 rounded-2xl w-full max-w-sm space-y-3">
+            <div class="flex justify-between items-center border-b border-pink-500/30 pb-2">
+                <h3 class="font-bold text-pink-300 text-sm"><i class="fa-solid fa-robot mr-1"></i> OVERTAKE TAMAGOTCHI PET</h3>
+                <button onclick="closeModal('modal-pet-overtake')" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div>
+                <textarea id="overtake-msg-input" rows="3" placeholder="Speak directly as their AI pet..." class="w-full bg-black border border-pink-500/50 rounded-xl p-2 text-xs text-white"></textarea>
+            </div>
+            <button onclick="submitPetOvertake()" class="w-full py-2 bg-purple-600 text-white font-bold rounded-xl text-xs shadow-[0_0_15px_rgba(157,0,255,0.5)]">TRANSMIT OVERRIDE</button>
+        </div>
+    </div>
+
+    <!-- Settings & Camera Modal -->
+    <div id="modal-camera" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[80] hidden flex items-center justify-center p-4">
+        <div class="hud-card p-4 rounded-2xl w-full max-w-sm border-cyan-500 space-y-4">
+            <div class="flex justify-between items-center border-b border-cyan-500/30 pb-2">
+                <h3 class="font-bold text-cyan-300 text-sm"><i class="fa-solid fa-sliders mr-1"></i> CAMERA & AI ENGINE</h3>
+                <button onclick="closeModal('modal-camera')" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                <button onclick="applyCameraPreset('iso')" class="p-2 rounded bg-cyan-500/20 border border-cyan-500 text-cyan-300 text-xs">📐 Iso 3D</button>
+                <button onclick="applyCameraPreset('top')" class="p-2 rounded bg-cyan-500/20 border border-cyan-500 text-cyan-300 text-xs">🗺️ Top Hex</button>
+                <button onclick="applyCameraPreset('cinematic')" class="p-2 rounded bg-pink-500/20 border border-pink-500 text-pink-300 text-xs">🎬 Cinematic</button>
+            </div>
+            <div id="modal-settings" class="border-t border-cyan-500/30 pt-3">
+                <label class="text-[10px] text-pink-400 font-bold block mb-1">Gemini AI Key (Guardian Angel Engine)</label>
+                <div class="flex gap-2">
+                    <input id="api-key-input" type="password" placeholder="API Key for dynamic text" class="flex-1 bg-black border border-pink-500/50 rounded p-1.5 text-xs text-white">
+                    <button onclick="saveApiKey()" class="px-3 bg-pink-500 text-black font-bold rounded text-xs">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Core State
+        let geminiApiKey = "";
+        let selectedToolType = 'main';
+        let selectedHexIndex = null;
+        let activeMicroRoomIndex = null;
+        
+        let globalAnxiety = 30;
+        let apexCount = 0;
+        let rentTimeSeconds = 225;
+
+        // Grid Dimensions
+        const GRID_COLS = 6;
+        const GRID_ROWS = 6;
+        const gridTiles = []; // Hexagon Macro Layer
+        const roomData = {};  // Pixel Micro Layer (10x10 grids)
+
+        // Expanded Roster (Including Dark Roles & Police)
+        const residentData = {
+            'main': { id: 'main', name: 'Red Riding Bunny', icon: '🐰', class: 'main-character-sprite', pet: '👾', heritage: 'Rainbow Core', debt: 120, traits: 'Anxious, Hopeful', anxiety: 40, dialogue: "My rainbow hood keeps the neon rain away..." },
+            'fox': { id: 'fox', name: 'Cyber Fox', icon: '🦊', class: 'character-sprite', pet: '🤖', heritage: 'Sector 7 Slums', debt: 450, traits: 'Sly, Hacktivist', anxiety: 70, dialogue: "If I miss rent tomorrow, this floor tile will be dereferenced." },
+            'dragon': { id: 'dragon', name: 'Neon Dragon', icon: '🐉', class: 'character-sprite', pet: '🔮', heritage: 'Cloud Spire', debt: 0, traits: 'Proud, Collector', anxiety: 10, dialogue: "Do not touch my energy cores!" },
+            'wolf': { id: 'wolf', name: 'Blue Wolf (Guardian Police)', icon: '🐺', class: 'character-sprite', pet: '🚔', heritage: 'System Patrol', debt: 0, traits: 'Strict, Protector, Empath', anxiety: 0, dialogue: "Scanning sector for Apex infections. Remain calm." },
+            'vamp': { id: 'vamp', name: 'Dark Triad Bat', icon: '🦇', class: 'character-sprite', pet: '👁️', heritage: 'Under-Grid', debt: 800, traits: 'Manipulative, Nocturnal', anxiety: 50, dialogue: "I feed on the anxiety of the Hive." }
+        };
+
+        // Initialize Macro Hex Grid
+        function generateHiveGrid() {
+            const gridEl = document.getElementById('hive-grid');
+            gridEl.innerHTML = '';
+            const hexW = 86, hexH = 98, xStep = hexW * 0.76, yStep = hexH * 0.52;
+            const gridW = GRID_COLS * xStep, gridH = GRID_ROWS * hexH;
+            
+            gridEl.style.width = `${gridW}px`; gridEl.style.height = `${gridH}px`;
+            gridEl.style.marginLeft = `-${gridW / 2}px`; gridEl.style.marginTop = `-${gridH / 2}px`;
+
+            for (let r = 0; r < GRID_ROWS; r++) {
+                for (let q = 0; q < GRID_COLS; q++) {
+                    const idx = r * GRID_COLS + q;
+                    const hex = document.createElement('div');
+                    hex.className = 'hexagon';
+                    let x = q * xStep, y = r * hexH;
+                    if (q % 2 !== 0) y += yStep;
+
+                    hex.style.left = `${x}px`; hex.style.top = `${y}px`;
+                    
+                    gridTiles[idx] = { el: hex, resident: null, isInfected: false };
+                    
+                    // Initialize empty 10x10 room logic for this hex
+                    roomData[idx] = { tiles: Array(100).fill('floor'), entities: [] };
+
+                    hex.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        openHexMenu(idx, e.clientX, e.clientY);
+                    });
+                    gridEl.appendChild(hex);
+                }
+            }
+        }
+
+        function openHexMenu(idx, x, y) {
+            selectedHexIndex = idx;
+            document.querySelectorAll('.hexagon').forEach(h => h.classList.remove('selected'));
+            gridTiles[idx].el.classList.add('selected');
+            
+            const menu = document.getElementById('hex-context-menu');
+            menu.style.left = `${x}px`; menu.style.top = `${y}px`;
+            menu.classList.remove('hidden');
+            menu.classList.add('flex');
+            
+            // If empty, auto-place selected spawn tool
+            if (!gridTiles[idx].resident && selectedToolType !== 'erase') {
+                placeResident(idx, selectedToolType);
+                closeContextMenu();
+            } else if (gridTiles[idx].resident) {
+                // Open dialogue panel for this resident
+                triggerDialogue(gridTiles[idx].resident);
+            }
+        }
+
+        function closeContextMenu() {
+            document.getElementById('hex-context-menu').classList.add('hidden');
+        }
+        
+        // Background click to close menu
+        document.getElementById('viewport-container').addEventListener('mousedown', closeContextMenu);
+
+        function placeResident(idx, resKey) {
+            if(!residentData[resKey]) return;
+            const tile = gridTiles[idx];
+            tile.resident = resKey;
+            
+            // Inject resident into the center of the micro room data (5,5 is index 55)
+            roomData[idx].entities = [{ id: resKey, pos: 55 }];
+            
+            renderHexContent(idx);
+            updateOracleStats();
+            showToast(`Assigned ${residentData[resKey].name} to Hex #${idx}`);
+        }
+
+        function renderHexContent(idx) {
+            const tile = gridTiles[idx];
+            const hex = tile.el;
+            hex.innerHTML = '';
+            hex.classList.remove('infected');
+
+            if (tile.resident) {
+                const res = residentData[tile.resident];
+                const spriteContainer = document.createElement('div');
+                spriteContainer.className = 'sprite-layer';
+                
+                const charEl = document.createElement('div');
+                charEl.className = res.class;
+                
+                // Apex infection check
+                if (res.anxiety >= 90) {
+                    charEl.classList.add('apex-sprite');
+                    hex.classList.add('infected');
+                    tile.isInfected = true;
+                } else {
+                    charEl.innerText = res.icon;
+                    tile.isInfected = false;
+                }
+
+                const petEl = document.createElement('div');
+                petEl.className = 'ai-pet-badge'; petEl.innerText = res.pet;
+
+                spriteContainer.appendChild(charEl); spriteContainer.appendChild(petEl);
+                applySpriteRotation(spriteContainer);
+                hex.appendChild(spriteContainer);
+            }
+        }
+
+        function applySpriteRotation(el) {
+            const gridEl = document.getElementById('hive-grid');
+            const transform = gridEl.style.transform;
+            let tilt = 45, rot = 0; // defaults
+            
+            const matchX = transform.match(/rotateX\(([-0-9.]+)deg\)/);
+            if(matchX) tilt = parseFloat(matchX[1]);
+            const matchZ = transform.match(/rotateZ\(([-0-9.]+)deg\)/);
+            if(matchZ) rot = parseFloat(matchZ[1]);
+
+            el.style.transform = `rotateX(-${tilt}deg) rotateZ(-${rot}deg)`;
+        }
+
+        function runSimulationStep() {
+            showToast("Running Sim Step... Calculating Social Anxiety.");
+            apexCount = 0;
+            globalAnxiety = 0;
+            let pop = 0;
+
+            gridTiles.forEach((tile, idx) => {
+                if (tile.resident) {
+                    pop++;
+                    let res = residentData[tile.resident];
+                    // Police (Wolf) reduces anxiety in adjacent nodes (simplified globally here)
+                    const hasPolice = gridTiles.some(t => t.resident === 'wolf');
+                    
+                    if (res.id !== 'wolf') {
+                        res.anxiety += (hasPolice ? -5 : 5); 
+                        if(res.anxiety > 100) res.anxiety = 100;
+                        if(res.anxiety < 0) res.anxiety = 0;
+                    }
+                    
+                    if (res.anxiety >= 90) apexCount++;
+                    globalAnxiety += res.anxiety;
+                    renderHexContent(idx);
+                }
+            });
+            
+            if (pop > 0) globalAnxiety = Math.round(globalAnxiety / pop);
+            updateOracleStats();
+            
+            if (apexCount > 0) {
+                document.getElementById('oracle-ping').classList.replace('bg-green-400', 'bg-red-500');
+                showToast("⚠️ APEX INFECTION DETECTED. Guardian intervention required.");
+            } else {
+                document.getElementById('oracle-ping').classList.replace('bg-red-500', 'bg-green-400');
+            }
+        }
+
+        function interactAction(type) {
+            if(selectedHexIndex === null || !gridTiles[selectedHexIndex].resident) return;
+            const res = residentData[gridTiles[selectedHexIndex].resident];
+            
+            if(type === 'care') {
+                res.anxiety = Math.max(0, res.anxiety - 30);
+                showToast(`Rehabilitated ${res.name}. Anxiety dropped!`);
+                renderHexContent(selectedHexIndex);
+                updateOracleStats();
+            }
+        }
+
+        let activeBrush = 'floor';
+        let rpgMode = false;
+        let playerPos = 55; // center of 10x10
+        let rpgInterval = null;
+
+        function enterMicroRoom() {
+            if(selectedHexIndex === null) return;
+            closeContextMenu();
+            activeMicroRoomIndex = selectedHexIndex;
+            document.getElementById('micro-room-id').innerText = `#0${selectedHexIndex}`;
+            document.getElementById('room-micro-view').classList.add('active');
+            
+            // Set Player character to room's resident or fallback to Main Bunny
+            const tile = gridTiles[selectedHexIndex];
+            const playerEl = document.getElementById('rpg-player');
+            if (tile.resident) {
+                playerEl.innerText = residentData[tile.resident].icon;
+                if(residentData[tile.resident].anxiety >= 90) playerEl.innerText = "🙈"; // Apex representation
+            } else {
+                playerEl.innerText = "🐰"; 
+            }
+            
+            rpgMode = false;
+            document.getElementById('btn-rpg-mode').innerText = "▶ START PLAYING";
+            document.getElementById('mobile-dpad').classList.add('hidden');
+            document.getElementById('rpg-hint').classList.add('hidden');
+            playerEl.classList.add('hidden');
+            
+            renderPixelRoom();
+        }
+
+        function exitMicroRoom() {
+            stopRPGMode();
+            document.getElementById('room-micro-view').classList.remove('active');
+            activeMicroRoomIndex = null;
+        }
+
+        function renderPixelRoom() {
+            const canvas = document.getElementById('pixel-canvas');
+            // Keep the player element
+            const playerEl = document.getElementById('rpg-player');
+            canvas.innerHTML = '';
+            canvas.appendChild(playerEl);
+            
+            const layout = roomData[activeMicroRoomIndex].tiles;
+            
+            for (let i = 0; i < 100; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'pixel-cell';
+                
+                // Draw tile style
+                const type = layout[i];
+                if (type === 'wall') cell.classList.add('tile-wall');
+                else if (type === 'neon') cell.classList.add('tile-neon');
+                else cell.classList.add('tile-floor');
+
+                // Draw furniture icons
+                if (type === 'bed') { cell.classList.add('tile-floor'); cell.innerText = '🛏️'; }
+                if (type === 'pc') { cell.classList.add('tile-floor'); cell.innerText = '🖥️'; }
+
+                // Draw interaction
+                cell.addEventListener('pointerdown', (e) => {
+                    if (rpgMode) return; // disable drawing in play mode
+                    paintCell(i);
+                    // Enable drag painting
+                    const moveHandler = (ev) => {
+                        const el = document.elementFromPoint(ev.clientX, ev.clientY);
+                        if (el && el.dataset.idx) paintCell(parseInt(el.dataset.idx));
+                    };
+                    document.addEventListener('pointermove', moveHandler);
+                    document.addEventListener('pointerup', () => document.removeEventListener('pointermove', moveHandler), {once:true});
+                });
+                
+                cell.dataset.idx = i;
+                canvas.appendChild(cell);
+            }
+        }
+
+        function setBrush(type) {
+            activeBrush = type;
+            document.querySelectorAll('.brush-btn').forEach(btn => btn.classList.remove('border-white', 'border-2'));
+            document.getElementById(`brush-${type}`).classList.add('border-white', 'border-2');
+        }
+
+        function paintCell(idx) {
+            if(activeBrush === 'erase') {
+                roomData[activeMicroRoomIndex].tiles[idx] = 'floor';
+            } else {
+                roomData[activeMicroRoomIndex].tiles[idx] = activeBrush;
+            }
+            renderPixelRoom();
+        }
+
+        function toggleRPGMode() {
+            rpgMode = !rpgMode;
+            const btn = document.getElementById('btn-rpg-mode');
+            const dpad = document.getElementById('mobile-dpad');
+            const hint = document.getElementById('rpg-hint');
+            const playerEl = document.getElementById('rpg-player');
+            
+            if (rpgMode) {
+                btn.innerText = "⏹ STOP PLAYING";
+                btn.classList.replace('bg-green-600/30', 'bg-red-600/30');
+                dpad.classList.remove('hidden');
+                hint.classList.remove('hidden');
+                playerEl.classList.remove('hidden');
+                
+                // Set initial position
+                playerPos = roomData[activeMicroRoomIndex].entities[0]?.pos || 55;
+                updatePlayerVisuals();
+                
+                document.addEventListener('keydown', handleKeyboard);
+            } else {
+                stopRPGMode();
+                btn.innerText = "▶ START PLAYING";
+                btn.classList.replace('bg-red-600/30', 'bg-green-600/30');
+                dpad.classList.add('hidden');
+                hint.classList.add('hidden');
+                playerEl.classList.add('hidden');
+            }
+        }
+
+        function stopRPGMode() {
+            rpgMode = false;
+            document.removeEventListener('keydown', handleKeyboard);
+            stopMove();
+        }
+
+        function updatePlayerVisuals() {
+            const playerEl = document.getElementById('rpg-player');
+            const x = playerPos % 10;
+            const y = Math.floor(playerPos / 10);
+            playerEl.style.left = `${x * 10}%`;
+            playerEl.style.top = `${y * 10}%`;
+        }
+
+        function movePlayer(dx, dy) {
+            const x = playerPos % 10;
+            const y = Math.floor(playerPos / 10);
+            const newX = x + dx;
+            const newY = y + dy;
+            
+            // Bounds check
+            if (newX < 0 || newX > 9 || newY < 0 || newY > 9) return;
+            
+            const newPos = newY * 10 + newX;
+            const layout = roomData[activeMicroRoomIndex].tiles;
+            
+            // Hitbox collision check (Wall or Furniture blocks movement)
+            if (layout[newPos] === 'wall' || layout[newPos] === 'neon' || layout[newPos] === 'pc') {
+                // bump animation logic could go here
+                return; 
+            }
+            
+            if (layout[newPos] === 'bed') {
+                showToast("Resting on bed... Anxiety reduced.");
+                if(gridTiles[activeMicroRoomIndex].resident) {
+                    residentData[gridTiles[activeMicroRoomIndex].resident].anxiety -= 10;
+                }
+            }
+
+            playerPos = newPos;
+            updatePlayerVisuals();
+        }
+
+        // Keyboard & D-Pad Logic
+        function handleKeyboard(e) {
+            if (!rpgMode) return;
+            if (e.key === 'w' || e.key === 'ArrowUp') movePlayer(0, -1);
+            if (e.key === 's' || e.key === 'ArrowDown') movePlayer(0, 1);
+            if (e.key === 'a' || e.key === 'ArrowLeft') movePlayer(-1, 0);
+            if (e.key === 'd' || e.key === 'ArrowRight') movePlayer(1, 0);
+        }
+
+        let moveTimer;
+        function startMove(dx, dy) {
+            if (!rpgMode) return;
+            movePlayer(dx, dy);
+            moveTimer = setInterval(() => movePlayer(dx, dy), 200); // continuous movement hold
+        }
+        function stopMove() { clearInterval(moveTimer); }
+
+        function updateOracleStats() {
+            document.getElementById('anxiety-val').innerText = `${globalAnxiety}%`;
+            document.getElementById('apex-val').innerText = `${apexCount}`;
+            document.getElementById('sec-percent').innerText = `${100 - globalAnxiety}%`;
+            document.getElementById('sec-bar').style.width = `${100 - globalAnxiety}%`;
+        }
+
+        function triggerDialogue(resKey) {
+            const res = residentData[resKey];
+            if (!res) return;
+
+            document.getElementById('speaker-icon').innerText = res.anxiety >= 90 ? "🙊" : res.icon;
+            document.getElementById('speaker-name').innerText = res.name;
+            document.getElementById('speaker-role').innerText = `${res.heritage}`;
+            document.getElementById('pet-mini-badge').innerText = res.pet;
+
+            const dialogueBody = document.getElementById('dialogue-body');
+            document.getElementById('dialogue-panel').classList.remove('hidden');
+
+            if (geminiApiKey) {
+                dialogueBody.innerText = "... [Guardian API Transmitting] ...";
+                // Mock Fetch block for Gemini
+                setTimeout(() => {
+                    dialogueBody.innerText = `"${res.dialogue} The API is active, but requires real fetch implementation."`;
+                }, 1000);
+            } else {
+                if (res.anxiety >= 90) {
+                    dialogueBody.innerText = `"🙉🙈🙊 E-ERROR... NEED... REHAB... TOO MUCH PRESSURE..."`;
+                } else {
+                    dialogueBody.innerText = `"${res.dialogue}"`;
+                }
+            }
+        }
+
+        // Camera Controls
+        function applyCameraPreset(preset) {
+            const gridEl = document.getElementById('hive-grid');
+            if (preset === 'iso') gridEl.style.transform = `rotateX(45deg) rotateZ(0deg) translateY(-80px) scale(1)`;
+            if (preset === 'top') gridEl.style.transform = `rotateX(0deg) rotateZ(0deg) translateY(0) scale(1.1)`;
+            if (preset === 'cinematic') gridEl.style.transform = `rotateX(60deg) rotateZ(-35deg) translateY(-40px) scale(1.3)`;
+            document.querySelectorAll('.sprite-layer').forEach(applySpriteRotation);
+            closeModal('modal-camera');
+        }
+
+        // Drag to rotate macro grid
+        let isDragging = false, startX, startY;
+        const vp = document.getElementById('viewport-container');
+        vp.addEventListener('mousedown', (e) => {
+            if (e.target.closest('.hexagon') || document.getElementById('room-micro-view').classList.contains('active')) return;
+            isDragging = true; startX = e.clientX; startY = e.clientY;
+        });
+        window.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            const gridEl = document.getElementById('hive-grid');
+            const transform = gridEl.style.transform;
+            let tilt = 45, rot = 0;
+            const matchX = transform.match(/rotateX\(([-0-9.]+)deg\)/); if(matchX) tilt = parseFloat(matchX[1]);
+            const matchZ = transform.match(/rotateZ\(([-0-9.]+)deg\)/); if(matchZ) rot = parseFloat(matchZ[1]);
+            
+            rot += (e.clientX - startX) * 0.5;
+            tilt -= (e.clientY - startY) * 0.5;
+            tilt = Math.max(0, Math.min(80, tilt));
+            
+            gridEl.style.transform = `rotateX(${tilt}deg) rotateZ(${rot}deg) translateY(-80px) scale(1)`;
+            document.querySelectorAll('.sprite-layer').forEach(applySpriteRotation);
+            startX = e.clientX; startY = e.clientY;
+        });
+        window.addEventListener('mouseup', () => isDragging = false);
+
+        // UI Initializers
+        function initUI() {
+            const spawnerGrid = document.getElementById('spawn-entity-grid');
+            Object.keys(residentData).forEach(key => {
+                const res = residentData[key];
+                const btn = document.createElement('div');
+                btn.className = 'p-2 rounded-xl bg-black/60 border border-cyan-500/40 text-center cursor-pointer hover:bg-cyan-500/30';
+                btn.innerHTML = `<div class="text-2xl">${res.icon}</div><div class="text-[9px] text-cyan-300 font-bold truncate">${res.name}</div>`;
+                btn.onclick = () => { selectedToolType = key; closeModal('modal-spawner'); showToast(`Equipped ${res.name} tool.`); };
+                spawnerGrid.appendChild(btn);
+            });
+            
+            const charSelect = document.getElementById('editor-char-select');
+            Object.keys(residentData).forEach(key => {
+                charSelect.innerHTML += `<option value="${key}">${residentData[key].icon} ${residentData[key].name}</option>`;
+            });
+            loadCharToEditor();
+        }
+
+        function loadCharToEditor() {
+            const res = residentData[document.getElementById('editor-char-select').value];
+            document.getElementById('edit-heritage').value = res.heritage;
+            document.getElementById('edit-debt').value = res.debt;
+            document.getElementById('edit-traits').value = res.traits;
+            document.getElementById('edit-dialogue-line').value = res.dialogue;
+        }
+
+        function saveCharacterEditor() {
+            const res = residentData[document.getElementById('editor-char-select').value];
+            res.heritage = document.getElementById('edit-heritage').value;
+            res.debt = parseInt(document.getElementById('edit-debt').value) || 0;
+            res.traits = document.getElementById('edit-traits').value;
+            res.dialogue = document.getElementById('edit-dialogue-line').value;
+            closeModal('modal-char-editor'); showToast(`Saved lore for ${res.name}`);
+        }
+
+        function saveApiKey() {
+            geminiApiKey = document.getElementById('api-key-input').value.trim();
+            document.getElementById('api-badge-text').innerText = geminiApiKey ? "AI: LIVE" : "AI: OFF";
+            closeModal('modal-camera');
+        }
+        
+        function submitPetOvertake() {
+            closeModal('modal-pet-overtake');
+            document.getElementById('dialogue-body').innerText = `🤖 [GUARDIAN OVERRIDE]: "${document.getElementById('overtake-msg-input').value}"`;
+        }
+
+        function showToast(msg) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = 'hud-card px-3 py-1.5 rounded-full text-xs font-bold text-cyan-300 border-cyan-400/60 animate-bounce';
+            toast.innerText = msg;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 2500);
+        }
+
+        function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
+        function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+        function togglePanel(id) { document.getElementById(id).classList.toggle('hidden'); }
+
+        window.onload = () => {
+            generateHiveGrid();
+            initUI();
+            // Default seed
+            placeResident(14, 'main');
+            placeResident(15, 'wolf');
+            updateOracleStats();
+        };
+    </script>
+</body>
+</html>
